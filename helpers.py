@@ -5,6 +5,8 @@ from collections import Counter
 import numpy as np
 import json
 
+from IPython import embed
+
 #############################
 #############################
 #############################
@@ -24,29 +26,36 @@ def load_data(data_file, field=None):
 def flatten_list(deep_list):
     flatten_list = []
     for x in deep_list:
-        flatten_list += x.split()
+        flatten_list += x.split() + ['|']
     return flatten_list
 
 # Limit the vocabulary of words to the most common N items
 def limit_vocabulary(X, vocabulary_size=50, filter_words=None):
     if filter_words is None:
-        filter_words = ['a', 'an', 'the', 'and', 'with']
+        filter_words = ['a', 'an', 'the']
     limit = vocabulary_size + len(filter_words)
     vocabulary = Counter(X).most_common(limit)
     vocabulary = set([x[0] for x in vocabulary if x[0] not in filter_words])
     X = [x for x in X if x in vocabulary]
     return X
 
+# def sequence_transform(X, seq_length):
+#     X_encoded, y_encoded = [], []
+#     for i in range(len(X) - seq_length - 1):
+#         if (i % 2500) == 0: print('>> DEBUG: Processed {} items'.format(i)) 
+#         x = X[i:i+seq_length]
+#         X_encoded.append(x.tolist())
+#         y_encoded.append(X[i+seq_length+1].tolist())
+#     return np.array(X_encoded), np.array(y_encoded)
+
+
 # Breaks one data list into smaller training observations and labels
 # for instance, X = [a, b, c, d, e] and seq_length = 2 yields
 # X_encoded = [[a, b], [b, c], [c, d]
 # y_encoded = [c, d, e]
-def sequence_transform(X, seq_length):
-    X_encoded, y_encoded = [], []
-    for i in range(len(X) - seq_length - 1):
-        x = X[i:i+seq_length]
-        X_encoded.append(x.tolist())
-        y_encoded.append(X[i+seq_length+1].tolist())
+def sequence_transform(X, n):
+    X_encoded = [X[i:i+n] for i in range(len(X)-n+1)][:-1]
+    y_encoded = X[n:]
     return np.array(X_encoded), np.array(y_encoded)
 
 #############################
@@ -56,13 +65,14 @@ def sequence_transform(X, seq_length):
 # Text manipulation functions
 def clean_string(my_string):
     my_string = remove_punctuation(my_string)
+    my_string = my_string.replace('.', ' .')
     my_string = my_string.lower()
     my_string = my_string.replace('  ', ' ')
     return my_string.strip()
 
 def remove_punctuation(my_string):
     for char in punctuation:
-        if char in my_string:
+        if char != '.' and char in my_string:
             my_string = my_string.replace(char, ' ')
     return my_string
 
@@ -101,6 +111,31 @@ def predict_observation(model, x, batch_size, label_encoder, onehot_encoder, raw
     # Round into One-Hot Encoding
     b = np.zeros_like(prediction)
     b[np.arange(len(prediction)), prediction.argmax(1)] = 1
+    if raw_prediction: return b
+    # Reverse One-Hot & Label Encoding
+    decoded = b.dot(onehot_encoder.active_features_).astype(int)
+    result = label_encoder.inverse_transform(decoded)
+    return result
+
+def n_max(arr, n):
+    return arr.flatten().argsort()[-n:][::-1]
+
+# Predicts x (in one-hot encoding) given a model, and presents data
+# as human-readable (raw_prediction = False), or as one-hot encoded (raw_prediction = True)
+def predict_observation_with_rules(model, x, batch_size, label_encoder, onehot_encoder, last_prediction, raw_prediction=False):    
+    prediction = model.predict(x=x, batch_size=batch_size)
+    # Round into One-Hot Encoding
+    top_2 = n_max(prediction, 2)
+    a = np.zeros_like(prediction)
+    b = np.zeros_like(prediction)
+    c = np.zeros_like(prediction)
+    a[np.arange(len(prediction)), prediction.argmax(1)] = 1
+    b[np.arange(len(prediction)), top_2[0]] = 1
+    c[np.arange(len(prediction)), top_2[1]] = 1
+    assert np.array_equal(a, b)
+    if last_prediction is not None and np.array_equal(b, last_prediction):
+        print('WARN! trying to predict 2 words in a row')
+        b = c
     if raw_prediction: return b
     # Reverse One-Hot & Label Encoding
     decoded = b.dot(onehot_encoder.active_features_).astype(int)
