@@ -45,7 +45,7 @@ def grid_search(data, params, sequence_lengths, vocabulary_sizes, output_file):
             output, model = create_model_and_train(X, y, params)
             store_data(output, model, seq, vocab, output_file)
             gc.collect() # use garbage collector
-    return outputs, model
+    return
 
 def create_model_and_train(X, y, params):
     # Unpack parameters
