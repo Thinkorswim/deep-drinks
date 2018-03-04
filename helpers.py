@@ -39,16 +39,6 @@ def limit_vocabulary(X, vocabulary_size=50, filter_words=None):
     X = [x for x in X if x in vocabulary]
     return X
 
-# def sequence_transform(X, seq_length):
-#     X_encoded, y_encoded = [], []
-#     for i in range(len(X) - seq_length - 1):
-#         if (i % 2500) == 0: print('>> DEBUG: Processed {} items'.format(i)) 
-#         x = X[i:i+seq_length]
-#         X_encoded.append(x.tolist())
-#         y_encoded.append(X[i+seq_length+1].tolist())
-#     return np.array(X_encoded), np.array(y_encoded)
-
-
 # Breaks one data list into smaller training observations and labels
 # for instance, X = [a, b, c, d, e] and seq_length = 2 yields
 # X_encoded = [[a, b], [b, c], [c, d]
@@ -120,24 +110,44 @@ def predict_observation(model, x, batch_size, label_encoder, onehot_encoder, raw
 def n_max(arr, n):
     return arr.flatten().argsort()[-n:][::-1]
 
+def sample_distribution(distribution):
+    D = distribution.shape[1]
+    i = np.random.choice(np.arange(D), p=distribution.flatten())
+    return i
+
 # Predicts x (in one-hot encoding) given a model, and presents data
 # as human-readable (raw_prediction = False), or as one-hot encoded (raw_prediction = True)
-def predict_observation_with_rules(model, x, batch_size, label_encoder, onehot_encoder, last_prediction, raw_prediction=False):    
+def language_model_sampling(model, x, batch_size, label_encoder, onehot_encoder, last_prediction, raw_prediction=False): 
     prediction = model.predict(x=x, batch_size=batch_size)
     # Round into One-Hot Encoding
-    top_2 = n_max(prediction, 2)
-    a = np.zeros_like(prediction)
+    rand_idx = sample_distribution(prediction)
     b = np.zeros_like(prediction)
-    c = np.zeros_like(prediction)
-    a[np.arange(len(prediction)), prediction.argmax(1)] = 1
-    b[np.arange(len(prediction)), top_2[0]] = 1
-    c[np.arange(len(prediction)), top_2[1]] = 1
-    assert np.array_equal(a, b)
-    if last_prediction is not None and np.array_equal(b, last_prediction):
-        print('WARN! trying to predict 2 words in a row')
-        b = c
+    b[np.arange(len(prediction)), rand_idx] = 1
     if raw_prediction: return b
     # Reverse One-Hot & Label Encoding
     decoded = b.dot(onehot_encoder.active_features_).astype(int)
     result = label_encoder.inverse_transform(decoded)
     return result
+
+
+# Predicts x (in one-hot encoding) given a model, and presents data
+# as human-readable (raw_prediction = False), or as one-hot encoded (raw_prediction = True)
+# def predict_observation_1(model, x, batch_size, label_encoder, onehot_encoder, last_prediction, raw_prediction=False):
+#     prediction = model.predict(x=x, batch_size=batch_size)
+#     embed()
+#     # Round into One-Hot Encoding
+#     top_2 = n_max(prediction, 2)
+#     b = np.zeros_like(prediction)
+#     c = np.zeros_like(prediction)
+#     b[np.arange(len(prediction)), top_2[0]] = 1
+#     c[np.arange(len(prediction)), top_2[1]] = 1
+#     if last_prediction is not None and np.array_equal(b, last_prediction):
+#         print('WARN! trying to predict 2 words in a row')
+#         b = np.array(c)
+#     elif np.random.randint(0, 3) == 0 and not np.array_equal(c, last_prediction):
+#         b = np.array(c)
+#     if raw_prediction: return b
+#     # Reverse One-Hot & Label Encoding
+#     decoded = b.dot(onehot_encoder.active_features_).astype(int)
+#     result = label_encoder.inverse_transform(decoded)
+#     return result

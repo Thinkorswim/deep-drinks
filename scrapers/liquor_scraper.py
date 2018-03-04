@@ -24,11 +24,17 @@ class LiquorSpider(scrapy.Spider):
 
     def parse_description(self, response):
         name = response.css('body > div.container.recipe-container.full-recipe-container > div.row.head-row.text-center > div > h1::text').extract()
+        ingredients = response.css('div.x-recipe-ingredients div.x-recipe-ingredient *::text').extract()
         descriptions = response.css('body > div.container.recipe-container.full-recipe-container > div.row.image-row > div.col-xs-12.col-sm-7.col-md-8.white-box > div:nth-child(2) > div.row.ingredients-preparation.acid-links > div.col-sm-6.col-xs-12 > div p')
-        if not name or not descriptions: return
+        if not ingredients:
+            ingredients = response.css('div.x-recipe-ingredients li[itemprop=ingredients]')
+            ingredients = [''.join(x.css('::text').extract()) for x in ingredients]
+        if not name or not ingredients or not descriptions: return
         description = ' '.join([x for x in descriptions.css('::text').extract()])
+        ingredients = '; '.join([x.strip() for x in ingredients if x.strip()])
         obj = {
             'name': name[0],
+            'ingredients': ingredients,
             'description': description
         }
         yield obj
