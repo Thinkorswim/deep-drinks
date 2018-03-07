@@ -110,17 +110,22 @@ def predict_observation(model, x, batch_size, label_encoder, onehot_encoder, raw
 def n_max(arr, n):
     return arr.flatten().argsort()[-n:][::-1]
 
-def sample_distribution(distribution):
+def sample_distribution(distribution, c=1):
     D = distribution.shape[1]
-    i = np.random.choice(np.arange(D), p=distribution.flatten())
+    assert c <= D
+    top_c = n_max(distribution, c)
+    dist_c = distribution[:, top_c]
+    dist_c = dist_c / dist_c.sum(axis=1,keepdims=1)
+    i = np.random.choice(top_c, p=dist_c.flatten())
+
     return i
 
 # Predicts x (in one-hot encoding) given a model, and presents data
 # as human-readable (raw_prediction = False), or as one-hot encoded (raw_prediction = True)
-def language_model_sampling(model, x, batch_size, label_encoder, onehot_encoder, last_prediction, raw_prediction=False): 
+def language_model_sampling(model, x, batch_size, label_encoder, onehot_encoder, last_prediction, raw_prediction=False, c=1):
     prediction = model.predict(x=x, batch_size=batch_size)
     # Round into One-Hot Encoding
-    rand_idx = sample_distribution(prediction)
+    rand_idx = sample_distribution(prediction, c=c)
     b = np.zeros_like(prediction)
     b[np.arange(len(prediction)), rand_idx] = 1
     if raw_prediction: return b
