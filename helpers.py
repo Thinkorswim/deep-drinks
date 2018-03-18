@@ -22,6 +22,13 @@ def load_data(data_file, field=None):
             data.append(obj[field])
     return data
 
+# Can be used to return a list of items given a list of list of items
+def make_flat(deep_list):
+    flat_list = []
+    for x in deep_list:
+        flat_list += x
+    return flat_list
+
 # Can be used to return a list of words given a list of list of words
 def flatten_list(deep_list):
     flatten_list = []
@@ -48,9 +55,35 @@ def sequence_transform(X, n):
     y_encoded = X[n:]
     return np.array(X_encoded), np.array(y_encoded)
 
+def get_embedding_matrix(glove_file, word_index, vocab_size, embedding_dim):
+    embeddings_index = {}
+    with open(glove_file, 'r') as f:
+        for line in f:
+            values = line.split()
+            word = values[0]
+            coefs = np.asarray(values[1:], dtype='float32')
+            embeddings_index[word] = coefs
+    embedding_matrix = np.zeros((vocab_size, embedding_dim))
+    for word, i in word_index.items():
+        embedding_vector = embeddings_index.get(word)
+        if embedding_vector is not None:
+            # words not found in embedding index will be all-zeros.
+            embedding_matrix[i] = embedding_vector
+    return embedding_matrix
+
 #############################
 #############################
 #############################
+
+def filter_texts(texts, filter_words):
+    remove_unicode = lambda x: x.encode('ascii', errors='ignore').decode().strip()
+    texts = [remove_unicode(x) for x in texts]
+    texts = [' '.join([y for y in x.split() if y not in filter_words]) for x in texts]
+    texts = [x.replace('.', ' . ') for x in texts]
+    texts = [x + ' |' for x in texts]
+    texts = [x.replace('  ', ' ') for x in texts]
+    np.random.shuffle(texts)
+    return texts
 
 # Text manipulation functions
 def clean_string(my_string):
@@ -72,6 +105,14 @@ def remove_punctuation(my_string):
 
 # Neural network helper functions
 # Helper Routines for Neural Networks
+
+# Reverse label encoding produced by tokenizer
+def decode_label(encoded_sequence, tokenizer):
+    decoded_sequence = []
+    reverse_word_map = dict(map(reversed, tokenizer.word_index.items()))
+    for x in encoded_sequence:
+        decoded_sequence.append(reverse_word_map[x])
+    return decoded_sequence
 
 # Reverses one-hot encoding
 def reverse_encoding(y_encoded, label_encoder, onehot_encoder):
@@ -117,7 +158,6 @@ def sample_distribution(distribution, c=1):
     dist_c = distribution[:, top_c]
     dist_c = dist_c / dist_c.sum(axis=1,keepdims=1)
     i = np.random.choice(top_c, p=dist_c.flatten())
-
     return i
 
 # Predicts x (in one-hot encoding) given a model, and presents data
@@ -134,25 +174,15 @@ def language_model_sampling(model, x, batch_size, label_encoder, onehot_encoder,
     result = label_encoder.inverse_transform(decoded)
     return result
 
-
 # Predicts x (in one-hot encoding) given a model, and presents data
 # as human-readable (raw_prediction = False), or as one-hot encoded (raw_prediction = True)
-# def predict_observation_1(model, x, batch_size, label_encoder, onehot_encoder, last_prediction, raw_prediction=False):
-#     prediction = model.predict(x=x, batch_size=batch_size)
-#     embed()
-#     # Round into One-Hot Encoding
-#     top_2 = n_max(prediction, 2)
-#     b = np.zeros_like(prediction)
-#     c = np.zeros_like(prediction)
-#     b[np.arange(len(prediction)), top_2[0]] = 1
-#     c[np.arange(len(prediction)), top_2[1]] = 1
-#     if last_prediction is not None and np.array_equal(b, last_prediction):
-#         print('WARN! trying to predict 2 words in a row')
-#         b = np.array(c)
-#     elif np.random.randint(0, 3) == 0 and not np.array_equal(c, last_prediction):
-#         b = np.array(c)
-#     if raw_prediction: return b
-#     # Reverse One-Hot & Label Encoding
-#     decoded = b.dot(onehot_encoder.active_features_).astype(int)
-#     result = label_encoder.inverse_transform(decoded)
-#     return result
+def language_model_sampling_2(model, x, batch_size, raw_prediction=False, c=1):
+    prediction = model.predict(x=x, batch_size=batch_size)
+    # Round into One-Hot Encoding
+    rand_idx = sample_distribution(prediction, c=c)
+    b = np.zeros_like(prediction)
+    b[np.arange(len(prediction)), rand_idx] = 1
+    if raw_prediction:
+        return b
+    result = np.argmax(prediction, axis=None, out=None)
+    return result
