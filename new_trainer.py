@@ -55,8 +55,9 @@ def create_model_and_train(X, y, num_epochs, batch_size, sequence_len, embedding
             'vocabulary_size': vocabulary_size,
             'embedding_dimension': embedding_dim
         }
-
-    return output, model
+        outputs.append(output)
+        
+    return outputs, model
 
 ###########################################
 ###########################################
