@@ -71,9 +71,8 @@ def get_recipe(X, model, recipe_length, creativity, batch_size, tokenizer):
     result, prediction = [], None
 
     for i in range(recipe_length):
-        prediction = language_model_sampling_2(
-                model, np.array([observation]), batch_size, raw_prediction=False, c=creativity
-        )
+        raw_prediction = model.predict(x=np.array([observation]), batch_size=batch_size)
+        prediction = sample_distribution(raw_prediction, c=creativity)
         result.append(prediction)
         observation = np.append(observation[1:], prediction)
 
@@ -146,7 +145,7 @@ if __name__ == "__main__":
     sequence_len = args.sequence if args.sequence else 50
     embedding_dim = 300
     vocabulary_size = None
-    glove_file = 'data/glove.6B/glove.6B.300d.txt'
+    glove_file = 'data/glove.42B.300d.txt'
     num_epochs = args.epochs if args.epochs else 10
     batch_size = 32
 
