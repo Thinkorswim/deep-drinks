@@ -20,6 +20,8 @@ import pickle
 import argparse
 import gc
 
+from IPython import embed
+
 ###########################################
 ###########################################
 ###########################################
@@ -55,27 +57,52 @@ def create_model_and_train(X, y, params):
     output_units = y.shape[1]
     model = params['model_fn'](params, input_shape, output_units)
 
-    result = model.fit(X, y, validation_split=0.05, epochs=epochs, batch_size=batch_size, verbose=1)
+    outputs = []
+    for i in range(num_epochs):
+        result = model.fit(X, y, validation_split=0.05, shuffle=False, epochs=1, batch_size=batch_size, verbose=1)
+        label_encoder, onehot_encoder = params['encoders']
+        seq_length, vocabulary_size = input_shape
+        recipe_length = 200
+        recipes = []
+        for c in [1, 10, 100, 350, 700]:
+            recipe = get_recipe(X, model, recipe_length, seq_length, vocabulary_size, batch_size, label_encoder, onehot_encoder, c)
+            recipes.append(recipe)
 
-    label_encoder, onehot_encoder = params['encoders']
-    seq_length, vocabulary_size = input_shape
-    recipe_length = 200
-    recipe = get_recipe(X, model, recipe_length, seq_length, vocabulary_size, batch_size, label_encoder, onehot_encoder)
+        output = {
+            'epoch': i+1,
+            'history': result.history,
+            'recipes': recipes,
+            'sequence_len': seq_length,
+            'vocabulary_size': vocabulary_size
+        }
+        outputs.append(output)
 
-    output = {
-        'history': result.history,
-        'final_recipe': recipe,
-        'sequence_length': seq_length,
-        'vocabulary_size': vocabulary_size
-    }
-
-    return output, model
+    return outputs, model
 
 ###########################################
 ###########################################
 ###########################################
 
 # Define useful helper functions
+
+# Text manipulation functions
+def clean_string_2(my_string):
+    remove_unicode = lambda x: x.encode('ascii', errors='ignore').decode().strip()
+    my_string = remove_unicode(my_string)
+    my_string = remove_punctuation_2(my_string)
+    my_string = my_string.replace('.', ' . ')
+    my_string = my_string.replace('  ', ' ')
+    my_string = my_string.lower()
+    return my_string.strip()
+
+def remove_punctuation_2(my_string):
+    for char in punctuation:
+        if char != '.' and char in my_string:
+            if char == "'":
+                my_string = my_string.replace(char, '')
+            else:
+                my_string = my_string.replace(char, ' ')
+    return my_string
 
 def get_seed(X, seq_length, label_encoder, onehot_encoder):
     # Get seed in text form and seed encoded ('observation')
@@ -88,19 +115,24 @@ def get_seed(X, seq_length, label_encoder, onehot_encoder):
     observation = X[start]
     return seed, observation
 
-def get_recipe(X, model, recipe_length, seq_length, vocabulary_size, batch_size, label_encoder, onehot_encoder):
+def get_recipe(X, model, recipe_length, seq_length, vocabulary_size, batch_size, label_encoder, onehot_encoder, c):
     seed, observation = get_seed(X, seq_length, label_encoder, onehot_encoder)
     result, prediction = [], None
     for i in range(recipe_length):
-        prediction = predict_observation(
-            model, np.array([observation]), batch_size, label_encoder, onehot_encoder, raw_prediction=True
+        prediction = language_model_sampling(
+            model, np.array([observation]), batch_size, label_encoder, onehot_encoder, None, raw_prediction=True, c=c
         )
         result.append(prediction)
         observation = np.vstack((observation[1:, :], prediction))
     result = np.array(result).reshape(recipe_length, vocabulary_size)
     recipe = reverse_encoding(result, label_encoder, onehot_encoder)
     recipe = ' '.join(recipe)
-    return recipe
+    output = {
+        'seed': seed,
+        'output': recipe,
+        'creativity': c
+    }
+    return output
 
 def store_data(output, model, seq, vocab, output_file):
     filename = output_file + '_{}_{}.pickle'.format(seq, vocab)
@@ -136,16 +168,20 @@ if __name__ == "__main__":
 
     # Load training data
     data = [
+        'data/liquor.json',
         'data/social_cocktail.json',
-        'data/liquor.json'
+        'data/serious_eats.json',
+        'data/live_in_style.json',
+        'data/all_recipes.json'
     ]
     descriptions = []
     for d in data:
         descriptions += load_data(d, field='description')
+    np.random.shuffle(descriptions)
     logger.info('>>>> There are {} recipes in the database.'.format(len(descriptions)))
 
     # Perform data preprocessing
-    descriptions = [clean_string(x) for x in descriptions]
+    descriptions = [clean_string_2(x) for x in descriptions]
     data = flatten_list(descriptions)
 
     # Set constant parameters used for all experiments
@@ -153,13 +189,17 @@ if __name__ == "__main__":
     batch_size = 32
 
     # Define Grid Search hyperparameters
-    sequence_lengths = [5, 10, 15] # [5, 10, 15]
-    vocabulary_sizes = [300, 500, 700] # [300, 500, 700]
+    sequence_lengths = [15] # [5, 10, 15]
+    vocabulary_sizes = [700] # [300, 500, 700]
+    logger.info('>> Number of epochs is {}.'.format(num_epochs))
 
     # Define neural network
     def create_model(params, input_shape, output_units):
         model = Sequential()
-        model.add(LSTM(512, input_shape=input_shape, activation='relu'))
+        model.add(GRU(256, input_shape=input_shape, return_sequences=True, activation='relu'))
+        model.add(Dropout(0.2))
+        model.add(GRU(256, activation='relu'))
+        model.add(Dropout(0.2))
         model.add(Dense(output_units, activation='softmax'))
         model.compile(loss='categorical_crossentropy', metrics=['categorical_accuracy'], optimizer='adam')
         return model
